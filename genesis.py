@@ -11,19 +11,19 @@ def main():
 
   input_script  = create_input_script(options.timestamp)
   output_script = create_output_script(options.pubkey)
-  # hash merkle root is the double sha256 hash of the transaction(s) 
+  # hash merkle root is the double sha256 hash of the transaction(s)
   tx = create_transaction(input_script, output_script,options)
   hash_merkle_root = hashlib.sha256(hashlib.sha256(tx).digest()).digest()
   print_block_info(options, hash_merkle_root)
 
   block_header        = create_block_header(hash_merkle_root, options.time, options.bits, options.nonce)
-  genesis_hash, nonce = generate_hash(block_header, algorithm, options.nonce, options.bits)
+  genesis_hash, nonce = generate_hash(block_header, algorithm, options.nonce, options.time, options.bits)
   announce_found_genesis(genesis_hash, nonce)
 
 
 def get_args():
   parser = optparse.OptionParser()
-  parser.add_option("-t", "--time", dest="time", default=int(time.time()), 
+  parser.add_option("-t", "--time", dest="time", default=int(time.time()),
                    type="int", help="the (unix) time when the genesisblock is created")
   parser.add_option("-z", "--timestamp", dest="timestamp", default="The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
                    type="string", help="the pszTimestamp found in the coinbase of the genesisblock")
@@ -97,7 +97,7 @@ def create_transaction(input_script, output_script,options):
   #tx.out_value         = struct.pack('<q' ,0x000000012a05f200) #50 coins
   tx.output_script_len = 0x43
   tx.output_script     = output_script
-  tx.locktime          = 0 
+  tx.locktime          = 0
   return transaction.build(tx)
 
 
@@ -121,12 +121,15 @@ def create_block_header(hash_merkle_root, time, bits, nonce):
 
 
 # https://en.bitcoin.it/wiki/Block_hashing_algorithm
-def generate_hash(data_block, algorithm, start_nonce, bits):
+def generate_hash(data_block, algorithm, start_nonce, start_time, bits):
   print 'Searching for genesis hash..'
   nonce           = start_nonce
   last_updated    = time.time()
+  timeValue       = start_time
   # https://en.bitcoin.it/wiki/Difficulty
   target = (bits & 0xffffff) * 2**(8*((bits >> 24) - 3))
+
+  print len(data_block[len(data_block) - 8:])
 
   while True:
     sha256_hash, header_hash = generate_hashes_from_block(data_block, algorithm)
@@ -134,17 +137,19 @@ def generate_hash(data_block, algorithm, start_nonce, bits):
     if is_genesis_hash(header_hash, target):
       if algorithm == "X11" or algorithm == "X13" or algorithm == "X15":
         return (header_hash, nonce)
+      print "TIME MOTHERFCKER ! : " + str(timeValue)
       return (sha256_hash, nonce)
     else:
-     nonce      = nonce + 1
-     data_block = data_block[0:len(data_block) - 4] + struct.pack('<I', nonce)  
+     #nonce      = nonce + 1
+     timeValue   = timeValue - 1
+     data_block = data_block[0:len(data_block) - 12] + struct.pack('<I', timeValue) + data_block[len(data_block) - 8:]
 
 
 def generate_hashes_from_block(data_block, algorithm):
   sha256_hash = hashlib.sha256(hashlib.sha256(data_block).digest()).digest()[::-1]
   header_hash = ""
   if algorithm == 'scrypt':
-    header_hash = scrypt.hash(data_block,data_block,1024,1,1,32)[::-1] 
+    header_hash = scrypt.hash(data_block,data_block,1024,1,1,32)[::-1]
   elif algorithm == 'SHA256':
     header_hash = sha256_hash
   elif algorithm == 'X11':
